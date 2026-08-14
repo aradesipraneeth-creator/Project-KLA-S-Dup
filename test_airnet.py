@@ -60,7 +60,7 @@ def main():
     assert gt_edges.shape == (1, 1, 256, 256), f"Expected GT edges shape (1, 1, 256, 256), got {gt_edges.shape}"
     print(f"[OK] Sobel Edge Target Generator PASSED. GT Edge map shape: {tuple(gt_edges.shape)}")
 
-    criterion = AIRNetHybridLoss(l1_weight=0.60, ssim_weight=0.25, edge_weight=0.15, use_lpips=False)
+    criterion = AIRNetHybridLoss(l1_weight=0.60, ssim_weight=0.25, edge_weight=0.15, data_range=1.0)
     loss_val = criterion(out_dict, dummy_gt)
     print(f"[OK] AIRNetHybridLoss Forward Pass PASSED. Calculated Loss: {loss_val.item():.6f}")
 

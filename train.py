@@ -491,8 +491,7 @@ def main():
         l1_weight=config.L1_WEIGHT,
         ssim_weight=config.SSIM_WEIGHT,
         edge_weight=config.EDGE_WEIGHT,
-        use_lpips=False,
-        data_range=1.0
+        data_range=1.0,
     ).to(device)
 
     optimizer = torch.optim.AdamW(

@@ -286,7 +286,7 @@ class FallbackSSIM(nn.Module):
         sigma12 = F.conv2d(img1_f * img2_f, window, padding=self.window_size // 2, groups=self.channel) - mu1_mu2
 
         ssim_map = ((2 * mu1_mu2 + c1) * (2 * sigma12 + c2)) / ((mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2))
-        return ssim_map.mean()
+        return ssim_map.mean().to(img1.dtype)
 
 
 HybridLoss = AIRNetHybridLoss
