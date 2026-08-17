@@ -153,7 +153,8 @@ def load_and_verify_models():
 
     # 1. AIR-Net v3 Foundation
     v3_model = AIRNetV3(norm_params=norm_params).to(DEVICE)
-    v3_cand = [
+    v3_env = os.environ.get("AIRNET_V3_CHECKPOINT", "")
+    v3_cand = ([Path(v3_env)] if v3_env else []) + [
         PROJECT_ROOT / "outputs" / "v3" / "checkpoints" / "airnet_v3_ema_best_model.pth",
         PROJECT_ROOT / "outputs" / "v3" / "checkpoints" / "airnet_v3_best_model.pth"
     ]
@@ -169,7 +170,8 @@ def load_and_verify_models():
 
     # 2. AIR-Net v4 Refinement System
     v4_model = AIRNetV4(norm_params=norm_params).to(DEVICE)
-    v4_cand = [
+    v4_env = os.environ.get("AIRNET_V4_CHECKPOINT", "")
+    v4_cand = ([Path(v4_env)] if v4_env else []) + [
         PROJECT_ROOT / "outputs" / "v4" / "checkpoints" / "best_v4_model.pth",
         PROJECT_ROOT / "outputs" / "v4" / "checkpoints" / "latest_v4_model.pth"
     ]

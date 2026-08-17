@@ -1,57 +1,40 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
 # PyTorch checkpoints and heavy model weights
 *.pth
 *.pt
 *.ckpt
+*.safetensors
 *.onnx
 
-# Data & Dataset files
+# Python & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Runtime outputs
+outputs/*/checkpoints/
+outputs/*/visual_comparisons/
+outputs/*/generated_images/
+outputs/*/predictions/
+outputs/*/test_vis/
+outputs/test_vis/
+
+# Data & Datasets
 train/
 Test_NoisyLR/
 *.npy
 *.npz
 
-# Outputs & Generated Validation dumps
-outputs/checkpoints/
-outputs/validation_predictions/
-outputs/visualizations/
-outputs/results/
-
-# Environments
+# Secrets
 .env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+.env.*
+!.env.example
 
 # IDE & OS files
 .vscode/
