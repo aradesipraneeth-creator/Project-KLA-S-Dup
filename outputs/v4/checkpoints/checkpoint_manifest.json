@@ -1,6 +1,6 @@
 {
     "project": "KLA Semiconductor Image Restoration (Project S)",
-    "verification_timestamp": "2026-08-15T12:43:48Z",
+    "verification_timestamp": "2026-08-15T21:56:55Z",
     "input_resolution": "128x128",
     "output_resolution": "256x256",
     "normalization": "[0.0, 1.0] float32",

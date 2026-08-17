@@ -1,0 +1,21 @@
+==============================================================================
+AIR-NET V4 DASHBOARD DIAGNOSTIC REPORT
+==============================================================================
+Runtime Device: cpu
+Sanity Check (GT vs GT): PASSED
+
+--- CHECKPOINT VERIFICATION ---
+AIR-Net v3 Foundation: FILE_NOT_FOUND
+AIR-Net v4 Refined System: FILE_NOT_FOUND
+
+[NOTICE] No dataset sample available on local machine for full evaluation.
+
+--- UI & SYSTEM INTEGRITY AUDIT ---
+✓ High-Contrast CSS: Applied (Fully readable in Light and Dark mode)
+✓ Headings & Labels: High opacity font-weight 700 styling applied
+✓ Sobel Edge Maps: Independent percentile display normalization enabled
+✓ Absolute Error Maps: Shared max error scale visualization enabled
+✓ Checkpoint Safety: Random weight fallback disabled
+✓ Resolution Strictness: Input (128x128), Output (256x256), GT (256x256) enforced
+✓ Dashboard Syntax Compilation (python -m py_compile app.py): PASSED
+==============================================================================

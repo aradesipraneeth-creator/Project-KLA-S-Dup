@@ -1,7 +1,11 @@
 import numpy as np
 import torch
 from scipy.ndimage import gaussian_filter
-from utils.image_normalization import prepare_for_metric
+
+try:
+    from utils.image_normalization import prepare_for_metric
+except ImportError:
+    from image_normalization import prepare_for_metric
 
 def compute_mse(pred: np.ndarray, gt: np.ndarray) -> float:
     p, g = prepare_for_metric(pred, gt)
@@ -76,6 +80,58 @@ def calculate_ssim(pred: torch.Tensor, gt: torch.Tensor, data_range: float = 1.0
     g_np = gt.detach().cpu().numpy()
     return compute_ssim(p_np, g_np, data_range=data_range)
 
+def compute_brightness_error(pred: np.ndarray, gt: np.ndarray) -> float:
+    p, g = prepare_for_metric(pred, gt)
+    return float(np.abs(np.mean(p) - np.mean(g)))
+
+def compute_contrast_error(pred: np.ndarray, gt: np.ndarray) -> float:
+    p, g = prepare_for_metric(pred, gt)
+    return float(np.abs(np.std(p) - np.std(g)))
+
+def compute_edge_error(pred: np.ndarray, gt: np.ndarray) -> float:
+    p, g = prepare_for_metric(pred, gt)
+    gx_p, gy_p = np.gradient(p)
+    gx_g, gy_g = np.gradient(g)
+    mag_p = np.sqrt(gx_p**2 + gy_p**2 + 1e-8)
+    mag_g = np.sqrt(gx_g**2 + gy_g**2 + 1e-8)
+    return float(np.mean(np.abs(mag_p - mag_g)))
+
+def compute_gradient_error(pred: np.ndarray, gt: np.ndarray) -> float:
+    p, g = prepare_for_metric(pred, gt)
+    gx_p, gy_p = np.gradient(p)
+    gx_g, gy_g = np.gradient(g)
+    return float(np.mean(np.abs(gx_p - gx_g) + np.abs(gy_p - gy_g)))
+
+def compute_laplacian_error(pred: np.ndarray, gt: np.ndarray) -> float:
+    p, g = prepare_for_metric(pred, gt)
+    lap_kernel = np.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=np.float32)
+    from scipy.ndimage import convolve
+    lap_p = convolve(p, lap_kernel)
+    lap_g = convolve(g, lap_kernel)
+    return float(np.mean(np.abs(lap_p - lap_g)))
+
+def compute_high_frequency_error(pred: np.ndarray, gt: np.ndarray) -> float:
+    p, g = prepare_for_metric(pred, gt)
+    blur_p = gaussian_filter(p, sigma=2.0)
+    blur_g = gaussian_filter(g, sigma=2.0)
+    hf_p = p - blur_p
+    hf_g = g - blur_g
+    return float(np.mean(np.abs(hf_p - hf_g)))
+
+def compute_all_metrics(pred: np.ndarray, gt: np.ndarray, device: torch.device = None) -> dict:
+    p, g = prepare_for_metric(pred, gt)
+    return {
+        "PSNR (dB)": compute_psnr(p, g),
+        "SSIM": compute_ssim(p, g),
+        "LPIPS": compute_lpips(p, g, device),
+        "Edge Error": compute_edge_error(p, g),
+        "Gradient Error": compute_gradient_error(p, g),
+        "Laplacian Error": compute_laplacian_error(p, g),
+        "HF Error": compute_high_frequency_error(p, g),
+        "Brightness Error": compute_brightness_error(p, g),
+        "Contrast Error": compute_contrast_error(p, g)
+    }
+
 def run_metric_sanity_test():
     """
     GT vs GT metric sanity test.
@@ -85,10 +141,12 @@ def run_metric_sanity_test():
     psnr_self = compute_psnr(dummy_gt, dummy_gt)
     ssim_self = compute_ssim(dummy_gt, dummy_gt)
     lpips_self = compute_lpips(dummy_gt, dummy_gt)
+    edge_err = compute_edge_error(dummy_gt, dummy_gt)
 
     assert psnr_self >= 99.9, f"GT vs GT PSNR sanity test failed: {psnr_self}"
     assert abs(ssim_self - 1.0) < 1e-4, f"GT vs GT SSIM sanity test failed: {ssim_self}"
     assert abs(lpips_self) < 1e-3, f"GT vs GT LPIPS sanity test failed: {lpips_self}"
+    assert edge_err < 1e-4, f"GT vs GT Edge Error sanity test failed: {edge_err}"
 
-    print(f"[SANITY TEST PASSED] GT vs GT -> PSNR: {psnr_self:.1f} dB | SSIM: {ssim_self:.4f} | LPIPS: {lpips_self:.4f}")
+    print(f"[SANITY TEST PASSED] GT vs GT -> PSNR: {psnr_self:.1f} dB | SSIM: {ssim_self:.4f} | LPIPS: {lpips_self:.4f} | EdgeErr: {edge_err:.4f}")
     return True
