@@ -68,16 +68,16 @@ def compute_lpips(pred: np.ndarray, gt: np.ndarray, device: torch.device = None)
 
     return float(np.mean(np.abs(p - g)))
 
-def calculate_psnr(pred: torch.Tensor, gt: torch.Tensor, data_range: float = 1.0) -> float:
-    """Wrapper for tensor input compatibility."""
-    p_np = pred.detach().cpu().numpy()
-    g_np = gt.detach().cpu().numpy()
+def calculate_psnr(pred, gt, data_range: float = 1.0) -> float:
+    """Wrapper for tensor or numpy input compatibility."""
+    p_np = pred.detach().cpu().numpy() if isinstance(pred, torch.Tensor) else np.asarray(pred)
+    g_np = gt.detach().cpu().numpy() if isinstance(gt, torch.Tensor) else np.asarray(gt)
     return compute_psnr(p_np, g_np, data_range=data_range)
 
-def calculate_ssim(pred: torch.Tensor, gt: torch.Tensor, data_range: float = 1.0) -> float:
-    """Wrapper for tensor input compatibility."""
-    p_np = pred.detach().cpu().numpy()
-    g_np = gt.detach().cpu().numpy()
+def calculate_ssim(pred, gt, data_range: float = 1.0) -> float:
+    """Wrapper for tensor or numpy input compatibility."""
+    p_np = pred.detach().cpu().numpy() if isinstance(pred, torch.Tensor) else np.asarray(pred)
+    g_np = gt.detach().cpu().numpy() if isinstance(gt, torch.Tensor) else np.asarray(gt)
     return compute_ssim(p_np, g_np, data_range=data_range)
 
 def compute_brightness_error(pred: np.ndarray, gt: np.ndarray) -> float:
