@@ -67,7 +67,7 @@ class CheckpointManager:
                 "error": f"Failed to open PyTorch binary (.pth is binary, not text): {e}"
             }
 
-        candidate_keys = ["ema_state_dict", "v4_state_dict", "model_state_dict", "state_dict", "weights", "model", "ema"]
+        candidate_keys = ["v5_state_dict", "ema_state_dict", "v4_state_dict", "model_state_dict", "state_dict", "refinement_state_dict", "weights", "model", "ema"]
         found_key = "root"
         state_dict = None
 

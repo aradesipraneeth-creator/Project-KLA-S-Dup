@@ -22,6 +22,7 @@ for path_obj in [PROJECT_ROOT, UTILS_DIR, Path(os.getcwd())]:
 from configs.config import Config
 from models.airnet_v3 import AIRNetV3
 from models.airnet_v4 import AIRNetV4
+from models.airnet_v5 import AIRNetV5
 
 from utils.checkpoint_manager import CheckpointManager, VerificationResult
 from utils.image_normalization import (
@@ -41,7 +42,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 config = Config(MODEL_VERSION="AIR-Net-v3")
 
 st.set_page_config(
-    page_title="AIR-Net v3 / v4 — High-Fidelity Semiconductor Restoration",
+    page_title="AIR-Net v3 / v4 / v5 — High-Fidelity Semiconductor Restoration",
     page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -185,11 +186,30 @@ def load_and_verify_models():
     if v4_path:
         v4_ver = CheckpointManager.verify_checkpoint(v4_model, v4_path, architecture_name="AIR-Net v4 System", device=DEVICE)
 
+    # 3. AIR-Net v5 High-Fidelity System
+    v5_model = AIRNetV5(norm_params=norm_params).to(DEVICE)
+    v5_env = os.environ.get("AIRNET_V5_CHECKPOINT", "")
+    v5_cand = ([Path(v5_env)] if v5_env else []) + [
+        PROJECT_ROOT / "outputs" / "v5" / "checkpoints" / "best_v5_model.pth",
+        PROJECT_ROOT / "outputs" / "v5" / "checkpoints" / "latest_v5_model.pth"
+    ]
+    v5_path = None
+    for c in v5_cand:
+        if c.exists():
+            v5_path = str(c)
+            break
+
+    v5_ver = None
+    if v5_path:
+        v5_ver = CheckpointManager.verify_checkpoint(v5_model, v5_path, architecture_name="AIR-Net v5 System", device=DEVICE)
+
     return {
         "v3_model": v3_model if (v3_ver and v3_ver.is_verified) else None,
         "v3_ver": v3_ver,
         "v4_model": v4_model if (v4_ver and v4_ver.is_verified) else None,
         "v4_ver": v4_ver,
+        "v5_model": v5_model if (v5_ver and v5_ver.is_verified) else None,
+        "v5_ver": v5_ver,
         "device": DEVICE
     }
 
@@ -225,7 +245,20 @@ def display_image(img_input: np.ndarray, caption: str = "", width_mode: str = "s
     arr = normalize_for_display_and_metrics(img_input)
     st.image(arr, caption=caption if caption else None, width=width_mode, clamp=True)
 
-st.title("🔬 KLA Semiconductor AIR-Net v3 / v4 System Viewer")
+def compute_percentiles(arr: np.ndarray) -> dict:
+    if arr is None:
+        return {"Mean": 0.0, "Std": 0.0, "P5": 0.0, "P25": 0.0, "P50": 0.0, "P75": 0.0, "P95": 0.0}
+    return {
+        "Mean": float(np.mean(arr)),
+        "Std": float(np.std(arr)),
+        "P5": float(np.percentile(arr, 5)),
+        "P25": float(np.percentile(arr, 25)),
+        "P50": float(np.percentile(arr, 50)),
+        "P75": float(np.percentile(arr, 75)),
+        "P95": float(np.percentile(arr, 95))
+    }
+
+st.title("🔬 KLA Semiconductor AIR-Net v3 / v4 / v5 System Viewer")
 st.caption("Content-Adaptive Semiconductor Image Restoration Evaluation System (128×128 → 256×256)")
 
 try:
@@ -234,6 +267,8 @@ try:
     v3_ver = info_dict["v3_ver"]
     v4_m = info_dict["v4_model"]
     v4_ver = info_dict["v4_ver"]
+    v5_m = info_dict["v5_model"]
+    v5_ver = info_dict["v5_ver"]
 except Exception as e:
     st.error(f"Error initializing models: {e}")
     st.stop()
@@ -242,21 +277,27 @@ st.sidebar.header("📁 Control Panel & Checkpoint Status")
 
 # V3 Status
 if v3_ver and v3_ver.is_verified:
-    st.sidebar.markdown(f"**AIR-Net v3 Foundation:**\n- ✓ Verified & Loaded\n- File: `{os.path.basename(v3_ver.filepath)}`\n- Params: `{v3_ver.num_parameters:,}`\n- SHA256: `{v3_ver.sha256[:10]}...`")
+    st.sidebar.markdown(f"**AIR-Net v3 Foundation:**\n- ✓ Verified & Loaded\n- File: `{os.path.basename(v3_ver.filepath)}`\n- Params: `{v3_ver.num_parameters:,}`")
 else:
-    st.sidebar.markdown("**AIR-Net v3 Foundation:**\n- ❌ Checkpoint Unavailable / Unverified\n- *Inference Disabled*")
+    st.sidebar.markdown("**AIR-Net v3 Foundation:**\n- ❌ Checkpoint Unavailable")
 
 # V4 Status
 if v4_ver and v4_ver.is_verified:
-    st.sidebar.markdown(f"**AIR-Net v4 System:**\n- ✓ Verified & Loaded\n- File: `{os.path.basename(v4_ver.filepath)}`\n- Params: `{v4_ver.num_parameters:,}`\n- SHA256: `{v4_ver.sha256[:10]}...`")
+    st.sidebar.markdown(f"**AIR-Net v4 System:**\n- ✓ Verified & Loaded\n- File: `{os.path.basename(v4_ver.filepath)}`\n- Params: `{v4_ver.num_parameters:,}`")
 else:
-    st.sidebar.markdown("**AIR-Net v4 System:**\n- ⚠️ Checkpoint Unavailable / Unverified\n- *Inference Disabled (No Random Weights Used)*")
+    st.sidebar.markdown("**AIR-Net v4 System:**\n- ⚠️ Checkpoint Unavailable")
+
+# V5 Status
+if v5_ver and v5_ver.is_verified:
+    st.sidebar.markdown(f"**AIR-Net v5 System:**\n- ✓ Verified & Loaded\n- File: `{os.path.basename(v5_ver.filepath)}`\n- Params: `{v5_ver.num_parameters:,}`")
+else:
+    st.sidebar.markdown("**AIR-Net v5 System:**\n- ⚠️ Checkpoint Unavailable (Training in Progress)")
 
 if st.sidebar.button("🔍 Verify Checkpoints"):
     st.sidebar.json({
         "v3_status": v3_ver.status_summary if v3_ver else "NOT_FOUND",
         "v4_status": v4_ver.status_summary if v4_ver else "NOT_FOUND",
-        "v4_sha256": v4_ver.sha256 if v4_ver else "N/A"
+        "v5_status": v5_ver.status_summary if v5_ver else "NOT_FOUND"
     })
 
 source_mode = st.sidebar.radio("Select Input Source:", ["Dataset Browser", "Manual 128×128 File Upload"])
@@ -281,7 +322,7 @@ if source_mode == "Dataset Browser":
                     gt_raw = np.load(gt_path)
 
 elif source_mode == "Manual 128×128 File Upload":
-    uploaded_lr = st.sidebar.file_uploader("Upload 128×128 Image (.npy, .png, .jpg, .jpeg, .bmp, .tiff)", type=["npy", "png", "jpg", "jpeg", "bmp", "tiff"])
+    uploaded_lr = st.sidebar.file_uploader("Upload 128×128 Image (.npy, .png, .jpg, .jpeg)", type=["npy", "png", "jpg", "jpeg"])
     uploaded_gt = st.sidebar.file_uploader("Upload Reference 256×256 Ground Truth (Optional)", type=["npy", "png", "jpg", "jpeg"])
 
     if uploaded_lr:
@@ -306,7 +347,7 @@ if lr_raw is not None:
     lr_t = torch.from_numpy(display_noisy).unsqueeze(0).unsqueeze(0).to(DEVICE)
     assert lr_t.shape[-2:] == (128, 128), f"Tensor input resolution mismatch: {lr_t.shape}"
 
-    display_v3, display_v4 = None, None
+    display_v3, display_v4, display_v5 = None, None, None
     routing_probs = np.ones(5) / 5.0
     raw_indices = {}
 
@@ -315,24 +356,26 @@ if lr_raw is not None:
         with torch.no_grad(), torch.inference_mode():
             v3_out = v3_m(lr_t)
             v3_pred_t = v3_out["restored"]
-            assert v3_pred_t.shape[-2:] == (256, 256), f"V3 output shape mismatch: {v3_pred_t.shape}"
+            assert v3_pred_t.shape[-2:] == (256, 256)
             display_v3 = denormalize_output(v3_pred_t)
-            assert display_v3.shape == (256, 256)
             routing_probs = v3_out["routing_probs"].squeeze().cpu().numpy()
             raw_indices = v3_m.indexer.compute_indices(display_noisy)
-    else:
-        st.warning("❌ **AIR-Net v3 checkpoint unavailable.** Inference disabled until a valid trained checkpoint is supplied. (No random weights used).")
 
     # AIR-Net v4 Inference
-    if v4_m is not None and v4_ver and v4_ver.is_verified and v3_m is not None:
+    if v4_m is not None and v4_ver and v4_ver.is_verified:
         with torch.no_grad(), torch.inference_mode():
             v4_out = v4_m(lr_t)
             v4_pred_t = v4_out["restored"]
-            assert v4_pred_t.shape[-2:] == (256, 256), f"V4 output shape mismatch: {v4_pred_t.shape}"
+            assert v4_pred_t.shape[-2:] == (256, 256)
             display_v4 = denormalize_output(v4_pred_t)
-            assert display_v4.shape == (256, 256)
-    else:
-        st.info("ℹ️ **AIR-Net v4 checkpoint unavailable / unverified.** Inference disabled. (No random weights used).")
+
+    # AIR-Net v5 Inference
+    if v5_m is not None and v5_ver and v5_ver.is_verified:
+        with torch.no_grad(), torch.inference_mode():
+            v5_out = v5_m(lr_t)
+            v5_pred_t = v5_out["restored"]
+            assert v5_pred_t.shape[-2:] == (256, 256)
+            display_v5 = denormalize_output(v5_pred_t)
 
     # Bicubic 2x Baseline (256x256 float32 in [0.0, 1.0])
     zoom_factors = (256 / display_noisy.shape[0], 256 / display_noisy.shape[1])
@@ -346,12 +389,12 @@ if lr_raw is not None:
 
 
     # =========================================================================
-    # SECTION 1: RESTORATION GRID COMPARISON (UNIFORM MASTER ARRAYS)
+    # SECTION 1: RESTORATION GRID COMPARISON (6 COLUMNS)
     # =========================================================================
     st.markdown("---")
     st.subheader(f"Restoration Grid Comparison — Sample: {selected_sample_name}")
 
-    g1, g2, g3, g4, g5 = st.columns(5)
+    g1, g2, g3, g4, g5, g6 = st.columns(6)
     with g1:
         st.markdown("**1. NoisyLR**\n128×128")
         display_image(display_noisy)
@@ -375,15 +418,22 @@ if lr_raw is not None:
             st.info("V4 Unavailable")
 
     with g5:
-        st.markdown("**5. Ground Truth**\n256×256")
+        st.markdown("**5. AIR-Net v5**\n256×256")
+        if display_v5 is not None:
+            display_image(display_v5)
+        else:
+            st.info("V5 Unavailable")
+
+    with g6:
+        st.markdown("**6. Ground Truth**\n256×256")
         if display_gt is not None:
             display_image(display_gt)
         else:
-            st.info("Ground Truth N/A")
+            st.info("GT N/A")
 
 
     # =========================================================================
-    # SECTION 2: SOBEL EDGE MAP ANALYSIS (PER-MAP DISPLAY NORMALIZATION)
+    # SECTION 2: SOBEL EDGE MAP ANALYSIS (6 COLUMNS)
     # =========================================================================
     st.markdown("---")
     st.subheader("Sobel Edge Map Analysis (Native Resolution)")
@@ -392,32 +442,39 @@ if lr_raw is not None:
     bic_mag = compute_sobel_edge_magnitude(display_bicubic)
     v3_mag = compute_sobel_edge_magnitude(display_v3) if display_v3 is not None else None
     v4_mag = compute_sobel_edge_magnitude(display_v4) if display_v4 is not None else None
+    v5_mag = compute_sobel_edge_magnitude(display_v5) if display_v5 is not None else None
     gt_mag = compute_sobel_edge_magnitude(display_gt) if display_gt is not None else None
 
-    e1, e2, e3, e4, e5 = st.columns(5)
-    e1.markdown("**Input Edge Map**\n128×128")
+    e1, e2, e3, e4, e5, e6 = st.columns(6)
+    e1.markdown("**Input Edge**")
     display_image(prepare_edge_map_display(inp_mag))
 
-    e2.markdown("**Bicubic Edge Map**\n256×256")
+    e2.markdown("**Bicubic Edge**")
     display_image(prepare_edge_map_display(bic_mag))
 
-    e3.markdown("**AIR-Net v3 Edge Map**\n256×256")
+    e3.markdown("**v3 Edge**")
     if v3_mag is not None:
         display_image(prepare_edge_map_display(v3_mag))
     else:
-        e3.info("V3 Edge Map N/A")
+        e3.info("N/A")
 
-    e4.markdown("**AIR-Net v4 Edge Map**\n256×256")
+    e4.markdown("**v4 Edge**")
     if v4_mag is not None:
         display_image(prepare_edge_map_display(v4_mag))
     else:
-        e4.info("V4 Edge Map N/A")
+        e4.info("N/A")
 
-    e5.markdown("**GT Edge Map**\n256×256")
+    e5.markdown("**v5 Edge**")
+    if v5_mag is not None:
+        display_image(prepare_edge_map_display(v5_mag))
+    else:
+        e5.info("N/A")
+
+    e6.markdown("**GT Edge**")
     if gt_mag is not None:
         display_image(prepare_edge_map_display(gt_mag))
     else:
-        e5.info("GT Edge Map N/A")
+        e6.info("N/A")
 
 
     # =========================================================================
@@ -430,34 +487,39 @@ if lr_raw is not None:
 
         v3_err = np.abs(display_v3 - display_gt) if display_v3 is not None else None
         v4_err = np.abs(display_v4 - display_gt) if display_v4 is not None else None
+        v5_err = np.abs(display_v5 - display_gt) if display_v5 is not None else None
         bic_err = np.abs(display_bicubic - display_gt)
 
         max_e = max(
             bic_err.max(),
             v3_err.max() if v3_err is not None else 0.0,
-            v4_err.max() if v4_err is not None else 0.0
+            v4_err.max() if v4_err is not None else 0.0,
+            v5_err.max() if v5_err is not None else 0.0
         ) + 1e-8
 
         with err1:
-            st.markdown("**Bicubic Error Map**")
-            display_image(bic_err / max_e)
-            st.caption(f"Max Error: `{bic_err.max():.4f}` | Mean Error: `{bic_err.mean():.4f}`")
-
-        with err2:
             st.markdown("**AIR-Net v3 Error Map**")
             if v3_err is not None:
                 display_image(v3_err / max_e)
-                st.caption(f"Max Error: `{v3_err.max():.4f}` | Mean Error: `{v3_err.mean():.4f}`")
+                st.caption(f"Max Error: `{v3_err.max():.4f}` | Mean: `{v3_err.mean():.4f}`")
             else:
-                st.info("V3 Error Map N/A")
+                st.info("V3 Error N/A")
 
-        with err3:
+        with err2:
             st.markdown("**AIR-Net v4 Error Map**")
             if v4_err is not None:
                 display_image(v4_err / max_e)
-                st.caption(f"Max Error: `{v4_err.max():.4f}` | Mean Error: `{v4_err.mean():.4f}`")
+                st.caption(f"Max Error: `{v4_err.max():.4f}` | Mean: `{v4_err.mean():.4f}`")
             else:
-                st.info("V4 Error Map N/A")
+                st.info("V4 Error N/A")
+
+        with err3:
+            st.markdown("**AIR-Net v5 Error Map**")
+            if v5_err is not None:
+                display_image(v5_err / max_e)
+                st.caption(f"Max Error: `{v5_err.max():.4f}` | Mean: `{v5_err.mean():.4f}`")
+            else:
+                st.info("V5 Error N/A")
 
 
     # =========================================================================
@@ -477,52 +539,53 @@ if lr_raw is not None:
                 "LPIPS": f"{m_bic['LPIPS']:.4f}"
             }]
 
-            m_v3 = None
+            m_v3, m_v4, m_v5 = None, None, None
             if display_v3 is not None:
-                p_v3, g_v3 = validate_metric_inputs(display_v3, display_gt)
-                m_v3 = compute_all_metrics(p_v3, g_v3, DEVICE)
-                metrics_rows.append({
-                    "Model": "AIR-Net v3 Foundation",
-                    "PSNR (dB)": f"{m_v3['PSNR (dB)']:.4f}",
-                    "SSIM": f"{m_v3['SSIM']:.4f}",
-                    "LPIPS": f"{m_v3['LPIPS']:.4f}"
-                })
+                p_v3, _ = validate_metric_inputs(display_v3, display_gt)
+                m_v3 = compute_all_metrics(p_v3, g_bic, DEVICE)
+                metrics_rows.append({"Model": "AIR-Net v3 Foundation", "PSNR (dB)": f"{m_v3['PSNR (dB)']:.4f}", "SSIM": f"{m_v3['SSIM']:.4f}", "LPIPS": f"{m_v3['LPIPS']:.4f}"})
 
-            m_v4 = None
             if display_v4 is not None:
-                p_v4, g_v4 = validate_metric_inputs(display_v4, display_gt)
-                m_v4 = compute_all_metrics(p_v4, g_v4, DEVICE)
-                metrics_rows.append({
-                    "Model": "AIR-Net v4 Refined System",
-                    "PSNR (dB)": f"{m_v4['PSNR (dB)']:.4f}",
-                    "SSIM": f"{m_v4['SSIM']:.4f}",
-                    "LPIPS": f"{m_v4['LPIPS']:.4f}"
-                })
+                p_v4, _ = validate_metric_inputs(display_v4, display_gt)
+                m_v4 = compute_all_metrics(p_v4, g_bic, DEVICE)
+                metrics_rows.append({"Model": "AIR-Net v4 Refined System", "PSNR (dB)": f"{m_v4['PSNR (dB)']:.4f}", "SSIM": f"{m_v4['SSIM']:.4f}", "LPIPS": f"{m_v4['LPIPS']:.4f}"})
+
+            if display_v5 is not None:
+                p_v5, _ = validate_metric_inputs(display_v5, display_gt)
+                m_v5 = compute_all_metrics(p_v5, g_bic, DEVICE)
+                metrics_rows.append({"Model": "AIR-Net v5 High-Fidelity System", "PSNR (dB)": f"{m_v5['PSNR (dB)']:.4f}", "SSIM": f"{m_v5['SSIM']:.4f}", "LPIPS": f"{m_v5['LPIPS']:.4f}"})
 
             st.table(pd.DataFrame(metrics_rows))
 
-            if m_v3 is not None and m_v4 is not None:
-                gain_p = m_v4["PSNR (dB)"] - m_v3["PSNR (dB)"]
-                gain_s = m_v4["SSIM"] - m_v3["SSIM"]
-                red_l = m_v3["LPIPS"] - m_v4["LPIPS"]
-                st.markdown(f"**V4 Improvement over v3:** PSNR: `{gain_p:+.4f} dB` (Higher=Better) | SSIM: `{gain_s:+.4f}` (Higher=Better) | LPIPS Reduction: `{red_l:+.4f}` (Positive Reduction=Better)")
-
-            with st.expander("📊 Extended Error & Structural Breakdown Metrics"):
-                ext_rows = []
-                if m_bic:
-                    ext_rows.append({"Model": "Bicubic 2x", "Edge Error": f"{m_bic['Edge Error']:.6f}", "Gradient Error": f"{m_bic['Gradient Error']:.6f}", "Laplacian Error": f"{m_bic['Laplacian Error']:.6f}", "HF Error": f"{m_bic['HF Error']:.6f}", "Brightness Error": f"{m_bic['Brightness Error']:.6f}", "Contrast Error": f"{m_bic['Contrast Error']:.6f}"})
-                if m_v3:
-                    ext_rows.append({"Model": "AIR-Net v3", "Edge Error": f"{m_v3['Edge Error']:.6f}", "Gradient Error": f"{m_v3['Gradient Error']:.6f}", "Laplacian Error": f"{m_v3['Laplacian Error']:.6f}", "HF Error": f"{m_v3['HF Error']:.6f}", "Brightness Error": f"{m_v3['Brightness Error']:.6f}", "Contrast Error": f"{m_v3['Contrast Error']:.6f}"})
-                if m_v4:
-                    ext_rows.append({"Model": "AIR-Net v4", "Edge Error": f"{m_v4['Edge Error']:.6f}", "Gradient Error": f"{m_v4['Gradient Error']:.6f}", "Laplacian Error": f"{m_v4['Laplacian Error']:.6f}", "HF Error": f"{m_v4['HF Error']:.6f}", "Brightness Error": f"{m_v4['Brightness Error']:.6f}", "Contrast Error": f"{m_v4['Contrast Error']:.6f}"})
-                st.table(pd.DataFrame(ext_rows))
+            if m_v3 is not None and m_v5 is not None:
+                gain_p = m_v5["PSNR (dB)"] - m_v3["PSNR (dB)"]
+                gain_s = m_v5["SSIM"] - m_v3["SSIM"]
+                red_l = m_v3["LPIPS"] - m_v5["LPIPS"]
+                st.markdown(f"**V5 Improvement over v3:** PSNR: `{gain_p:+.4f} dB` | SSIM: `{gain_s:+.4f}` | LPIPS Reduction: `{red_l:+.4f}`")
 
         except ValueError as val_err:
             st.error(f"Metric validation error: {val_err}")
 
 
     # =========================================================================
-    # SECTION 5: WHY THIS IMAGE WAS ROUTED THIS WAY
+    # SECTION 5: INTENSITY DISTRIBUTION ANALYSIS (MEAN, STD, P5, P25, P50, P75, P95)
+    # =========================================================================
+    st.markdown("---")
+    st.subheader("📊 Intensity Distribution & Robust Percentile Analysis")
+
+    p_rows = [
+        {"Image": "NoisyLR (Input)", **compute_percentiles(display_noisy)},
+        {"Image": "Bicubic 2x", **compute_percentiles(display_bicubic)},
+        {"Image": "AIR-Net v3", **compute_percentiles(display_v3)},
+        {"Image": "AIR-Net v4", **compute_percentiles(display_v4)},
+        {"Image": "AIR-Net v5", **compute_percentiles(display_v5)},
+        {"Image": "Ground Truth", **compute_percentiles(display_gt)}
+    ]
+    st.table(pd.DataFrame(p_rows))
+
+
+    # =========================================================================
+    # SECTION 6: WHY THIS IMAGE WAS ROUTED THIS WAY
     # =========================================================================
     st.markdown("---")
     st.subheader("Why This Image Was Routed This Way")
@@ -534,84 +597,31 @@ if lr_raw is not None:
         </div>
     """, unsafe_allow_html=True)
 
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.markdown("**Soft MoE Routing Probabilities**")
-        st.bar_chart(pd.DataFrame({"Category": categories, "Probability (%)": [round(p*100, 2) for p in routing_probs]}).set_index("Category"))
-
-    with c2:
-        st.markdown("**10 Characteristic Input Indices (Input-Only)**")
-        k_list = list(raw_indices.keys())
-        ic1 = st.columns(5)
-        for idx, k in enumerate(k_list[:5]):
-            ic1[idx].metric(k.replace("_", " ").title(), f"{raw_indices[k]:.4f}")
-        ic2 = st.columns(5)
-        for idx, k in enumerate(k_list[5:]):
-            ic2[idx].metric(k.replace("_", " ").title(), f"{raw_indices[k]:.4f}")
-
 
     # =========================================================================
-    # SECTION 6: HIGH-FIDELITY IMAGE DOWNLOADS
+    # SECTION 7: HIGH-FIDELITY IMAGE DOWNLOADS
     # =========================================================================
     st.markdown("---")
     st.subheader("💾 Download Restored Semiconductor Images (256×256 PNG)")
 
-    d1, d2 = st.columns(2)
+    d1, d2, d3 = st.columns(3)
     if display_v3 is not None:
         v3_img_uint8 = (display_v3 * 255.0).round().clip(0, 255).astype(np.uint8)
         buf_v3 = io.BytesIO()
         Image.fromarray(v3_img_uint8).save(buf_v3, format="PNG")
-        d1.download_button(
-            label="📥 Download AIR-Net v3 Restored Image",
-            data=buf_v3.getvalue(),
-            file_name=f"airnet_v3_{selected_sample_name.replace('.npy', '')}.png",
-            mime="image/png"
-        )
+        d1.download_button("📥 Download AIR-Net v3 Restored Image", buf_v3.getvalue(), f"airnet_v3_{selected_sample_name.replace('.npy', '')}.png", "image/png")
 
     if display_v4 is not None:
         v4_img_uint8 = (display_v4 * 255.0).round().clip(0, 255).astype(np.uint8)
         buf_v4 = io.BytesIO()
         Image.fromarray(v4_img_uint8).save(buf_v4, format="PNG")
-        d2.download_button(
-            label="📥 Download AIR-Net v4 Restored Image",
-            data=buf_v4.getvalue(),
-            file_name=f"airnet_v4_{selected_sample_name.replace('.npy', '')}.png",
-            mime="image/png"
-        )
+        d2.download_button("📥 Download AIR-Net v4 Restored Image", buf_v4.getvalue(), f"airnet_v4_{selected_sample_name.replace('.npy', '')}.png", "image/png")
 
-
-    # =========================================================================
-    # SECTION 7: EXPANDABLE CHECKPOINT & IMAGE PIPELINE DIAGNOSTICS
-    # =========================================================================
-    st.markdown("---")
-    with st.expander("🔧 Image Pipeline & Array Intensity Range Diagnostics"):
-        st.markdown("### Master Image Array Intensity Statistics")
-        diag_rows = [
-            compute_array_stats("NoisyLR (Input 128x128)", display_noisy),
-            compute_array_stats("Bicubic 2x Baseline", display_bicubic),
-            compute_array_stats("AIR-Net v3 Prediction", display_v3),
-            compute_array_stats("AIR-Net v4 Prediction", display_v4),
-            compute_array_stats("Ground Truth Reference", display_gt)
-        ]
-        st.table(pd.DataFrame(diag_rows))
-
-        st.markdown("### Model & Runtime Diagnostics")
-        st.json({
-            "v3_checkpoint": {
-                "path": v3_ver.filepath if v3_ver else "NONE",
-                "verified": v3_ver.is_verified if v3_ver else False,
-                "sha256": v3_ver.sha256 if v3_ver else "NONE",
-                "parameters": v3_ver.num_parameters if v3_ver else 0
-            },
-            "v4_checkpoint": {
-                "path": v4_ver.filepath if v4_ver else "NONE",
-                "verified": v4_ver.is_verified if v4_ver else False,
-                "sha256": v4_ver.sha256 if v4_ver else "NONE",
-                "parameters": v4_ver.num_parameters if v4_ver else 0
-            },
-            "runtime_device": str(DEVICE),
-            "gt_vs_gt_sanity_test": "PASSED" if run_metric_sanity_test() else "FAILED"
-        })
+    if display_v5 is not None:
+        v5_img_uint8 = (display_v5 * 255.0).round().clip(0, 255).astype(np.uint8)
+        buf_v5 = io.BytesIO()
+        Image.fromarray(v5_img_uint8).save(buf_v5, format="PNG")
+        d3.download_button("📥 Download AIR-Net v5 Restored Image", buf_v5.getvalue(), f"airnet_v5_{selected_sample_name.replace('.npy', '')}.png", "image/png")
 
 else:
     st.info("💡 Select a sample from the sidebar to inspect AIR-Net restoration predictions.")

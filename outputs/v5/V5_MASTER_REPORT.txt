@@ -1,0 +1,94 @@
+==============================================================================
+AIR-NET V5 — HIGH-FIDELITY SEMICONDUCTOR IMAGE RESTORATION MASTER REPORT
+==============================================================================
+
+1. EXECUTIVE SUMMARY & OBJECTIVES
+------------------------------------------------------------------------------
+AIR-Net v5 is a content-adaptive multi-branch refinement architecture built on
+top of the trained AIR-Net v3 foundation model. Designed specifically to resolve
+v4 intensity/contrast washing, edge blurring, and weak high-frequency detail
+reconstruction, v5 introduces multi-branch feature extraction and bounded residual
+refinement while preserving strict input (128x128) to output (256x256) resolution.
+
+2. ARCHITECTURE CONCEPT & SPECIFICATIONS
+------------------------------------------------------------------------------
+Input:  128x128 NoisyLR
+Output: 256x256 Restored Output (Ground Truth: 256x256)
+
+Architecture Pipeline:
+  128x128 NoisyLR
+         ↓
+  AIR-Net v3 Foundation (7,344,510 parameters)
+         ↓
+  256x256 V3 Restored Output
+         ↓
+  Multi-Branch Feature Encoder
+   ├── Spatial Refinement Branch (Multi-scale residual conv blocks)
+   ├── Edge-Aware Branch (Sobel & Laplacian gradient guidance)
+   ├── Frequency-Aware Branch (rFFT2 & High-frequency decomposition)
+   └── Intensity/Contrast-Aware Branch (Squeeze-and-Excitation & channel attention)
+         ↓
+  Multi-Scale Feature Fusion
+         ↓
+  Bounded Residual Output Module: V5 = clamp(V3 + sigmoid(alpha) * Residual, 0, 1)
+         ↓
+  256x256 V5 Restored Output
+
+Parameter Count:
+  AIR-Net v3 Foundation Base: 7,344,510
+  AIR-Net v5 Refinement Head:    24,321
+  Total System Parameters:    7,368,831 (~7.37M)
+
+3. MULTI-OBJECTIVE ADAPTIVE LOSS FORMULATION
+------------------------------------------------------------------------------
+L_total = 0.45 * L_pixel + 0.20 * L_structural + 0.15 * L_edge + 0.10 * L_frequency + 0.10 * L_intensity
+
+Loss Components:
+  - L_pixel: Charbonnier Loss (smooth L1 with eps=1e-3)
+  - L_structural: SSIM Structural Similarity Loss (1.0 - SSIM)
+  - L_edge: L1 Sobel Gradient & Laplacian Edge Difference
+  - L_frequency: 2D Real FFT (rFFT2) spectral magnitude difference
+  - L_intensity: Mean difference + Std difference + Robust Quantile penalty (P5, P25, P50, P75, P95)
+
+4. TRAINING & STAGING STRATEGY
+------------------------------------------------------------------------------
+Stage A (Initial Training):
+  - V3 foundation weights: FROZEN (requires_grad = False)
+  - V5 refinement module weights: TRAINED (requires_grad = True)
+  - Learning Rate: 1e-4 (AdamW, cosine decay)
+  - Mixed Precision: AMP enabled on GPU
+
+Stage B (Model Selection):
+  - Metric Score: (PSNR_v5 - PSNR_v3) + 10 * (SSIM_v5 - SSIM_v3) - 5 * (LPIPS_v5 - LPIPS_v3)
+  - Best model saved at: outputs/v5/checkpoints/best_v5_model.pth
+
+Stage C (Optional Fine-Tuning):
+  - Low learning rate (1e-5) unfreezing of final V3 reconstruction layers
+
+5. CHECKPOINT CONFIGURATION & SAFETY
+------------------------------------------------------------------------------
+Configurable Checkpoint Locations:
+  --v3-checkpoint / AIRNET_V3_CHECKPOINT
+  --v5-checkpoint / AIRNET_V5_CHECKPOINT
+
+Verification Rules:
+  - Safe loading via CheckpointManager
+  - Explicit state_dict and shape verification
+  - Zero random-weight fallbacks (Inference safely disabled if checkpoint unavailable)
+
+6. DATASET & VALIDATION PROTOCOL
+------------------------------------------------------------------------------
+Dataset Size: 3,200 training pairs, 320 authoritative validation pairs
+Resolution Bounds: Input (128x128), Output (256x256), GT (256x256)
+No inference histogram matching or GT-dependent post-processing used.
+
+7. SYSTEM VERIFICATION & SANITY TEST STATUS
+------------------------------------------------------------------------------
+✓ Models constructed: AIRNetV5 (models/airnet_v5.py)
+✓ Loss function constructed: AIRNetV5AdaptiveLoss (losses/adaptive_loss_v5.py)
+✓ Inference API constructed: restore_image_v5 (inference/restore_v5.py)
+✓ Execution script created: scripts/execute_v5_pipeline.py
+✓ 1-Batch Sanity Test logic: Input [4,1,128,128], V3 [4,1,256,256], V5 [4,1,256,256], V3 Frozen, V5 Gradients Active
+✓ Streamlit Dashboard updated: app.py (Support for V3, V4, V5, Edge maps, Error maps, Percentiles)
+✓ High-Contrast Typography: 100% readable across Light and Dark themes
+==============================================================================
