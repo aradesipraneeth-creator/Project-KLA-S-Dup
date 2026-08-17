@@ -70,13 +70,13 @@ def get_train_val_datasets(
         raise FileNotFoundError(
             f"Dataset directory not found: '{train_lr_dir}'\n"
             f"Current working directory: '{os.getcwd()}'\n"
-            f"Please verify that your dataset folder exists at 'Train\train\NoisyLR' or 'Train\train\NoisyLR'."
+            f"Please verify that your dataset folder exists at 'Train/train/NoisyLR'."
         )
     if not os.path.exists(train_gt_dir):
         raise FileNotFoundError(
             f"Dataset directory not found: '{train_gt_dir}'\n"
             f"Current working directory: '{os.getcwd()}'\n"
-            f"Please verify that your dataset folder exists at 'Train\train\GT' or 'Train\train\GT'."
+            f"Please verify that your dataset folder exists at 'Train/train/GT'."
         )
 
     lr_files = set(f for f in os.listdir(train_lr_dir) if f.endswith(".npy"))
