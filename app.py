@@ -415,14 +415,14 @@ if lr_raw is not None:
         if display_v4 is not None:
             display_image(display_v4)
         else:
-            st.info("V4 Unavailable")
+            st.warning("❌ AIR-Net v4 checkpoint unavailable — inference disabled.")
 
     with g5:
         st.markdown("**5. AIR-Net v5**\n256×256")
         if display_v5 is not None:
             display_image(display_v5)
         else:
-            st.info("V5 Unavailable")
+            st.warning("❌ AIR-Net v5 checkpoint unavailable — inference disabled.")
 
     with g6:
         st.markdown("**6. Ground Truth**\n256×256")

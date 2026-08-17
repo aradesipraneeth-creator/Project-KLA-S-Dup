@@ -98,6 +98,62 @@ class CheckpointManager:
         }
 
     @classmethod
+    def load_checkpoint_state_dict(cls, filepath: str, map_location: str = "cpu") -> Tuple[dict, dict]:
+        """
+        Robustly loads a PyTorch binary .pth checkpoint without assumption of internal layout.
+        Strips 'module.' prefixes if present and returns (clean_state_dict, metadata_dict).
+        Raises FileNotFoundError or RuntimeError if loading fails.
+        """
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Checkpoint file '{filepath}' does not exist on disk.")
+
+        size_bytes = os.path.getsize(filepath)
+        if size_bytes == 0:
+            raise RuntimeError(f"Checkpoint file '{filepath}' is empty (0 bytes).")
+
+        size_mb = size_bytes / (1024 * 1024)
+        sha256 = compute_file_sha256(filepath)
+
+        checkpoint_data = torch.load(filepath, map_location=map_location, weights_only=False)
+
+        candidate_keys = ["v4_state_dict", "v5_state_dict", "ema_state_dict", "model_state_dict", "state_dict", "refinement_state_dict", "weights", "model", "ema"]
+        found_key = "root"
+        raw_state_dict = None
+
+        if isinstance(checkpoint_data, dict):
+            for k in candidate_keys:
+                if k in checkpoint_data and isinstance(checkpoint_data[k], dict):
+                    found_key = k
+                    raw_state_dict = checkpoint_data[k]
+                    break
+            if raw_state_dict is None:
+                if all(isinstance(v, torch.Tensor) for v in checkpoint_data.values()):
+                    raw_state_dict = checkpoint_data
+                    found_key = "dict_root"
+        elif isinstance(checkpoint_data, nn.Module):
+            raw_state_dict = checkpoint_data.state_dict()
+            found_key = "module_instance"
+
+        if raw_state_dict is None:
+            raise RuntimeError(f"Could not locate valid PyTorch state_dict in '{filepath}'. Found keys: {list(checkpoint_data.keys()) if isinstance(checkpoint_data, dict) else type(checkpoint_data)}")
+
+        # Strip DataParallel 'module.' prefix if present
+        clean_state_dict = {}
+        for k, v in raw_state_dict.items():
+            clean_key = k[7:] if k.startswith("module.") else k
+            clean_state_dict[clean_key] = v
+
+        metadata = {
+            "filepath": filepath,
+            "size_mb": size_mb,
+            "sha256": sha256,
+            "state_key_used": found_key,
+            "num_tensors": len(clean_state_dict)
+        }
+
+        return clean_state_dict, metadata
+
+    @classmethod
     def verify_checkpoint(
         cls,
         model: nn.Module,

@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from models.airnet_v3 import AIRNetV3
+from models.airnet_v4 import AIRNetV4
 from utils.image_normalization import normalize_for_display_and_metrics
 
 class SpatialRefinementBranch(nn.Module):
@@ -89,7 +90,7 @@ class IntensityContrastBranch(nn.Module):
 class BoundedResidualModule(nn.Module):
     """
     Learns a bounded residual refinement map with numerical stability.
-    V5 = clamp(V3 + sigmoid(alpha) * residual, 0.0, 1.0)
+    V5 = clamp(Foundation_Output + sigmoid(alpha) * 0.5 * residual, 0.0, 1.0)
     """
     def __init__(self, in_channels: int = 16, initial_alpha: float = 0.1):
         super().__init__()
@@ -97,29 +98,35 @@ class BoundedResidualModule(nn.Module):
             nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(in_channels, 1, kernel_size=3, padding=1),
-            nn.Tanh()  # Residual range [-1.0, 1.0]
+            nn.Tanh()
         )
-        # Learnable bounded scaling parameter
         self.alpha_param = nn.Parameter(torch.tensor([np.log(initial_alpha / (1.0 - initial_alpha))], dtype=torch.float32))
 
-    def forward(self, v3_out: torch.Tensor, feat: torch.Tensor) -> tuple:
+    def forward(self, foundation_out: torch.Tensor, feat: torch.Tensor) -> tuple:
         raw_res = self.res_conv(feat)
-        alpha = torch.sigmoid(self.alpha_param) * 0.5  # Max scale 0.5 for stability
-        v5_out = torch.clamp(v3_out + alpha * raw_res, 0.0, 1.0)
+        alpha = torch.sigmoid(self.alpha_param) * 0.5
+        v5_out = torch.clamp(foundation_out + alpha * raw_res, 0.0, 1.0)
         return v5_out, raw_res, alpha
 
 class AIRNetV5(nn.Module):
     """
     AIR-Net v5 High-Fidelity Refinement Semiconductor Image Restoration System.
-    Combines AIR-Net v3 foundation model with specialized multi-branch refinement architecture.
-    Inputs: 128x128 NoisyLR -> V3 (256x256) -> V5 Multi-Branch Refinement -> 256x256 V5 Output.
+    Combines trained AIR-Net v4 foundation model (or v3 base) with specialized multi-branch refinement architecture.
+    Inputs: 128x128 NoisyLR -> V4 (256x256) -> V5 Multi-Branch Refinement -> 256x256 V5 Output.
     """
-    def __init__(self, norm_params: dict = None, num_channels: int = 16):
+    def __init__(self, foundation_mode: str = "v4", norm_params: dict = None, num_channels: int = 16):
         super().__init__()
-        # Foundation AIR-Net v3 model
-        self.v3_base = AIRNetV3(norm_params=norm_params)
-        
-        # Initial feature encoder for 256x256 V3 output
+        self.foundation_mode = foundation_mode
+        if foundation_mode == "v4":
+            self.foundation_base = AIRNetV4(norm_params=norm_params)
+        else:
+            self.foundation_base = AIRNetV3(norm_params=norm_params)
+
+        # Alias for backward compatibility
+        self.v4_base = self.foundation_base
+        self.v3_base = self.foundation_base.v3_base if hasattr(self.foundation_base, "v3_base") else self.foundation_base
+
+        # Feature encoder for 256x256 foundation output
         self.encoder = nn.Sequential(
             nn.Conv2d(1, num_channels, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
@@ -144,39 +151,35 @@ class AIRNetV5(nn.Module):
         # Bounded Residual Refinement Head
         self.refinement_head = BoundedResidualModule(in_channels=num_channels)
 
-    def freeze_v3_base(self):
-        """Freezes AIR-Net v3 foundation parameters during initial V5 training."""
-        for p in self.v3_base.parameters():
+    def freeze_foundation(self):
+        """Freezes foundation base parameters (V4 or V3) during initial V5 training."""
+        for p in self.foundation_base.parameters():
             p.requires_grad = False
 
-    def unfreeze_v3_base(self):
-        """Unfreezes AIR-Net v3 foundation parameters for joint fine-tuning."""
-        for p in self.v3_base.parameters():
+    def freeze_v3_base(self):
+        """Alias for freeze_foundation."""
+        self.freeze_foundation()
+
+    def unfreeze_foundation(self):
+        """Unfreezes foundation base parameters for joint fine-tuning."""
+        for p in self.foundation_base.parameters():
             p.requires_grad = True
 
     def forward(self, lr_input: torch.Tensor) -> dict:
-        """
-        Forward pass.
-        Args:
-            lr_input: (B, 1, 128, 128) NoisyLR tensor in range [0.0, 1.0].
-        Returns:
-            Dictionary containing restored V5 output (256x256), V3 output (256x256),
-            residual map, alpha scaling, and routing probabilities.
-        """
         assert lr_input.shape[-2:] == (128, 128), f"Input resolution mismatch: expected (128, 128), got {lr_input.shape[-2:]}"
 
-        # 1. Base V3 Foundation Forward Pass
-        v3_out_dict = self.v3_base(lr_input)
-        v3_res = v3_out_dict["restored"]  # (B, 1, 256, 256)
-        routing_probs = v3_out_dict["routing_probs"]
+        # 1. Base Foundation Forward Pass
+        base_out_dict = self.foundation_base(lr_input)
+        foundation_res = base_out_dict["restored"]  # (B, 1, 256, 256)
+        routing_probs = base_out_dict["routing_probs"]
 
-        assert v3_res.shape[-2:] == (256, 256), f"V3 output shape mismatch: {v3_res.shape}"
+        assert foundation_res.shape[-2:] == (256, 256), f"Foundation output shape mismatch: {foundation_res.shape}"
 
         # 2. V5 Multi-Branch Feature Extraction
-        feat_base = self.encoder(v3_res)
+        feat_base = self.encoder(foundation_res)
         f_spatial = self.spatial_branch(feat_base)
-        f_edge = self.edge_branch(v3_res, feat_base)
-        f_freq = self.freq_branch(v3_res, feat_base)
+        f_edge = self.edge_branch(foundation_res, feat_base)
+        f_freq = self.freq_branch(foundation_res, feat_base)
         f_intensity = self.intensity_branch(feat_base)
 
         # 3. Feature Fusion
@@ -184,13 +187,14 @@ class AIRNetV5(nn.Module):
         f_fused = self.fusion(f_cat)
 
         # 4. Bounded Residual Refinement
-        v5_res, raw_residual, alpha = self.refinement_head(v3_res, f_fused)
+        v5_res, raw_residual, alpha = self.refinement_head(foundation_res, f_fused)
 
         assert v5_res.shape[-2:] == (256, 256), f"V5 output shape mismatch: {v5_res.shape}"
 
         return {
             "restored": v5_res,
-            "v3_restored": v3_res,
+            "foundation_restored": foundation_res,
+            "v3_restored": foundation_res,
             "residual": raw_residual,
             "alpha": alpha,
             "routing_probs": routing_probs
